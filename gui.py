@@ -124,6 +124,11 @@ class MoodleScannerGUI(QMainWindow):
         self.export_button.clicked.connect(self.export_report)
         actions_layout.addWidget(self.export_button)
         
+        self.analyze_button = QPushButton("Analyze Risks")
+        self.analyze_button.clicked.connect(self.run_risk_analysis)
+        self.analyze_button.setEnabled(False)  # Disabled until scan completes
+        actions_layout.addWidget(self.analyze_button)
+        
         self.clear_button = QPushButton("Clear Results")
         self.clear_button.clicked.connect(self.clear_results)
         actions_layout.addWidget(self.clear_button)
@@ -183,9 +188,6 @@ class MoodleScannerGUI(QMainWindow):
             # Store complete results for later analysis
             self.current_results = results
             self.current_findings = findings
-            # Automatically run tests and risk analysis
-            self.run_tests()
-            self.run_risk_analysis()
             
             # Get summary from results or calculate it
             if 'summary' in results and 'by_severity' in results['summary']:
@@ -238,6 +240,10 @@ class MoodleScannerGUI(QMainWindow):
         
     def display_findings(self, findings):
         self.results_table.setRowCount(len(findings))
+        
+        if len(findings) == 0:
+            self.generate_detailed_report(findings)
+            return
         
         severity_colors = {
             'Critical': QColor(255, 200, 200),  # Light red
@@ -310,41 +316,64 @@ class MoodleScannerGUI(QMainWindow):
         report += f"Target: {self.target_input.text()}\n"
         report += f"Scan Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         
-        # Group by severity
-        by_severity = {}
-        for finding in findings:
-            severity = finding['severity']
-            if severity not in by_severity:
-                by_severity[severity] = []
-            by_severity[severity].append(finding)
-            
-        for severity in ['Critical', 'High', 'Medium', 'Low', 'Info']:
-            if severity in by_severity:
-                report += f"\n{severity} Severity Findings ({len(by_severity[severity])}):\n"
-                report += "-" * 40 + "\n"
-                for finding in by_severity[severity]:
-                    report += f"Type: {finding['type']}\n"
-                    report += f"URL: {finding['url']}\n"
-                    report += f"Description: {finding['description']}\n\n"
+        if len(findings) == 0:
+            report += "No security vulnerabilities were detected during this scan.\n"
+            report += "The target appears to be secure or may not be a Moodle installation.\n\n"
+            report += "Note: This scan checks for common vulnerabilities but may not detect\n"
+            report += "all possible security issues. Regular security assessments are recommended.\n"
+        else:
+            # Group by severity
+            by_severity = {}
+            for finding in findings:
+                severity = finding['severity']
+                if severity not in by_severity:
+                    by_severity[severity] = []
+                by_severity[severity].append(finding)
+                
+            for severity in ['Critical', 'High', 'Medium', 'Low', 'Info']:
+                if severity in by_severity:
+                    report += f"\n{severity} Severity Findings ({len(by_severity[severity])}):\n"
+                    report += "-" * 40 + "\n"
+                    for finding in by_severity[severity]:
+                        report += f"Type: {finding['type']}\n"
+                        report += f"URL: {finding['url']}\n"
+                        report += f"Description: {finding['description']}\n\n"
                     
         self.details_text.setText(report)
         
-    def show_finding_details(self):
-        selected_items = self.results_table.selectedItems()
-        if selected_items:
+    def show_finding_details(self, row=None):
+        """Show details for a finding, either from table selection or button click"""
+        if row is None:
+            # Called from table selection
+            selected_items = self.results_table.selectedItems()
+            if not selected_items:
+                return
             row = selected_items[0].row()
-            finding_type = self.results_table.item(row, 1).text()
-            url = self.results_table.item(row, 2).text()
-            description = self.results_table.item(row, 3).text()
+        
+        # Get finding details from the table
+        severity_item = self.results_table.item(row, 0)
+        type_item = self.results_table.item(row, 1)
+        url_item = self.results_table.item(row, 2)
+        desc_item = self.results_table.item(row, 3)
+        
+        if not all([severity_item, type_item, url_item, desc_item]):
+            return
             
-            details = f"Finding Details:\n\n"
-            details += f"Type: {finding_type}\n"
-            details += f"URL: {url}\n"
-            details += f"Description: {description}\n\n"
-            details += f"Recommendation: {self.get_recommendation(finding_type)}"
-            
-            # Show in a separate dialog or update details tab
-            self.details_text.setText(details)
+        finding_type = type_item.text()
+        url = url_item.text()
+        description = desc_item.text()
+        severity = severity_item.text()
+        
+        details = f"Finding Details:\n\n"
+        details += f"Severity: {severity}\n"
+        details += f"Type: {finding_type}\n"
+        details += f"URL: {url}\n"
+        details += f"Description: {description}\n\n"
+        details += f"Recommendation: {self.get_recommendation(finding_type)}"
+        
+        # Show in the details tab
+        self.tabs.setCurrentIndex(1)  # Switch to details tab
+        self.details_text.setText(details)
             
     def get_recommendation(self, finding_type):
         recommendations = {
@@ -508,10 +537,12 @@ class MoodleScannerGUI(QMainWindow):
     def clear_results(self):
         self.results_table.setRowCount(0)
         self.details_text.clear()
-
+        
         self.current_findings = []
+        self.current_results = None
         self.progress_bar.setValue(0)
         self.progress_label.setText("Ready to scan")
+        self.analyze_button.setEnabled(False)  # Disable analyze button when results are cleared
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

@@ -73,10 +73,7 @@ def get_ssl_info(host, port=443):
             with context.wrap_socket(sock, server_hostname=host) as ssock:
                 cert = ssock.getpeercert()
                 
-                # Get certificate expiration info
-                not_after = dict(x[0] for x in cert['notAfter'].split() if x[0] in ('CN', 'O', 'OU'))
-                not_before = dict(x[0] for x in cert['notBefore'].split() if x[0] in ('CN', 'O', 'OU'))
-                
+                # Get certificate information
                 return {
                     'issuer': dict(x[0] for x in cert['issuer']),
                     'subject': dict(x[0] for x in cert['subject']),
@@ -168,6 +165,10 @@ def main():
         for port in open_ports:
             print(f"    {port['port']}/tcp : {port['service'] if port.get('service') else 'unknown service'}")
         
+        # Initialize variables
+        ssl_info = None
+        moodle_info = None
+        
         # Check for SSL if HTTPS is open
         if any(p['port'] == 443 for p in open_ports):
             print("\n[*] Checking SSL certificate...")
@@ -198,8 +199,8 @@ def main():
             'target': args.hostname,
             'ip_info': ip_info,
             'port_scan': results,
-            'ssl_info': ssl_info if 'ssl_info' in locals() else None,
-            'moodle_info': moodle_info if 'moodle_info' in locals() else None
+            'ssl_info': ssl_info,
+            'moodle_info': moodle_info
         }
         
         # Save to file if requested

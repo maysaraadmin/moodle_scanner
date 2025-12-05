@@ -7,6 +7,8 @@ import xml.etree.ElementTree as ET
 import random
 import string
 import json
+import os
+import logging
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse, urlencode, parse_qs
 from concurrent.futures import ThreadPoolExecutor
@@ -223,7 +225,7 @@ class MoodleScanner:
                             'description': f'Possible SQL injection at {point}'
                         })
                         break
-                except:
+                except (requests.RequestException, ValueError, KeyError):
                     pass
                     
         return findings
